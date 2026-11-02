@@ -1,5 +1,7 @@
 # portburg-secure-bank
 
+**Made by Vaibhav Thakur** — a practical defensive cybersecurity project.
+
 A defensive cybersecurity portfolio for **Portburg Bank**, a fictional private bank headquartered in Zurich, Switzerland. All examples and future demonstration data are synthetic. This project is for education, not production banking or a claim of regulatory compliance.
 
 **Status: Phase 1 complete — scaffold and design.** No banking API, containers, identity provider, WAF, SIEM, or scanner pipeline has been implemented yet. See the [seven-phase roadmap](docs/roadmap.md) for delivery and validation gates.
