@@ -1,0 +1,9 @@
+.git
+.local
+**/__pycache__
+.venv
+*.key
+*.pem
+*.sqlite3*
+backups
+artifacts

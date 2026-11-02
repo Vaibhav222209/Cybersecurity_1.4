@@ -1,0 +1,32 @@
+name: portbug-defense-center
+services:
+  defense-center:
+    build: .
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - lab-state:/data
+    networks:
+      - lab
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+volumes:
+  lab-state:
+networks:
+  lab:
+    driver: bridge

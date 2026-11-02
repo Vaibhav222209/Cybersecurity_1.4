@@ -1,98 +1,104 @@
-# portburg-secure-bank
+# Portbug Bank · Cyber Defense Center
 
-**Made by Vaibhav Thakur** — a practical defensive cybersecurity project.
+**Made by Vaibhav Thakur.** A practical cybersecurity engineering project for a **fictional private bank in Zurich, Switzerland**.
 
-A defensive cybersecurity portfolio for **Portburg Bank**, a fictional private bank headquartered in Zurich, Switzerland. All examples and future demonstration data are synthetic. This project is for education, not production banking or a claim of regulatory compliance.
+A runnable security operations console with synthetic detection scenarios, explainable payment-risk signals, controlled incident workflows, and verifiable audit evidence. The interface is backed by local Python logic and persistent state; scenario buttons exercise the detection engine rather than merely changing a dashboard counter.
 
-**Status: Phase 1 complete — scaffold and design.** No banking API, containers, identity provider, WAF, SIEM, or scanner pipeline has been implemented yet. See the [seven-phase roadmap](docs/roadmap.md) for delivery and validation gates.
+![Portbug Bank Cyber Defense Center with synthetic detections, activity charts and control evidence](docs/defense-center.png)
 
-## Quickstart: current phase
+## Run it
 
-Requirements: Git, GNU Make, and Python **3.12**. No third-party Python packages, credentials, or cloud accounts are needed for Phase 1.
+Install **Python 3.12 or later**. No Make, npm installation, Python packages, cloud account, or credentials are required to run the application.
+
+```bat
+:: Windows Command Prompt — from the project folder
+py -m portbug
+```
+
+```sh
+# Linux / macOS — from the project folder
+python3 -m portbug
+```
+
+Open **http://127.0.0.1:8080** in your browser. Keep the terminal open; press **Ctrl+C** to stop. If that port is occupied, add `--port 8081` and open the corresponding address. On Windows, `py --list` shows installed Python versions; select an installed supported version explicitly with `py -3.12 -m portbug` or `py -3.14 -m portbug` if necessary.
+
+To download the project first:
 
 ```sh
 git clone https://github.com/Vaibhav222209/Cybersecurity_1.4.git
 cd Cybersecurity_1.4
-python3 --version
-make lint
-make test
 ```
 
-On Windows Command Prompt, Make is optional. From the project folder, run:
+Optional Docker startup: `docker compose up --build`. The Compose port is published on host loopback. See [operations](docs/operations.md) for persistence, shutdown, backup, and recovery.
 
-```bat
-py -3.12 tools\check_repository.py
-py -3.12 -m unittest discover -s tests -v
-```
+## Explore the defense center
 
-Use `py --list` to check installed Python versions. If 3.12 is missing, install Python 3.12 and reopen the terminal. The project targets 3.12; a different `python3` version is not a substitute. Git attributes keep text files in LF format on all platforms, and test fixtures explicitly use LF rather than the operating system's default line endings.
+1. Review the overview, asset zones, and synthetic alert queue.
+2. Select a scenario such as **credential abuse**, **payment change**, or **data export**, then run it. All events are generated locally; no attack or network scan is performed.
+3. Inspect the resulting detection, its reason, severity, and ATT&CK technique reference.
+4. Move an alert through **triage → contain → resolve**. These actions update the local exercise only; they do not control a real identity provider or payment system.
+5. Review fraud reason codes and distinguish **implemented**, **simulated**, and **planned** controls.
+6. Inspect the audit chain and download the evidence report. Repeat a benign baseline scenario to compare positive and negative detection behavior.
 
-The project name is `portburg-secure-bank`; the existing GitHub repository name remains `Cybersecurity_1.4`. These commands work against the Phase 1 commit after it has been pushed. The onboarding checkout currently uses the local `work` branch.
+## What works
 
-`make lint` checks document links, text hygiene, Python syntax, structured JSON, and accidental private-key material. `make test` exercises the checker against valid and deliberately broken fixtures and verifies the actual scaffold. These are documentation checks, not application security tests or a complete secrets scanner.
+| Capability | Implementation |
+| --- | --- |
+| Defensive detection | Local event rules for suspicious authentication, geography, privilege changes, exports, and payment-instruction changes; synthetic fixtures and tests |
+| Fraud review | Deterministic risk scoring with human-readable reasons; advisory outputs only |
+| Incident operations | Ordered state transitions with rejected invalid actions and linked exercise records |
+| Evidence trail | Atomic SQLite state updates and an HMAC-SHA256 audit chain using a locally generated, uncommitted key |
+| Local HTTP safeguards | Loopback default, request validation and limits, same-origin write checks, CSRF protection, and restrictive browser security headers |
+| Operator interface | Responsive dashboard, scenario controls, alert details, fraud review, control evidence, audit inspection, and runbooks |
+| Reproducible development | Standard-library Python runtime/tests; plain local HTML, CSS, and JavaScript; Windows and Linux CI workflow |
 
-`make up` will start the local Docker Compose lab in Phase 2. `make scan` will invoke the real security scanners in Phase 3. Both commands currently exit with a clear error; no services need to be stopped in this phase. Future dependencies and images will be pinned before use.
+The project models advanced preparation without claiming a production deployment. MFA/SSO, WAF, service mTLS, managed SIEM, hardware key custody, encrypted storage, and production network enforcement are **not integrated here**. The console labels modeled controls separately. Local HTTP is not TLS, SQLite is not encrypted, and an administrator holding the audit key can rewrite the chain. Swiss residency is an architectural assumption, not an attestation about your computer or this development environment.
 
-## Proposed architecture
+Initial findings and chart history are seeded illustrative data, not measured bank telemetry. Fraud scoring uses explainable rules, not a trained ML model. New scenario actions produce actual local state changes and audit entries.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    Browser[Synthetic demo client]
-    subgraph DMZ[dmz network]
-        WAF[NGINX + ModSecurity / OWASP CRS]
-    end
-    subgraph APP[app network]
-        API[FastAPI demo API]
-        IAM[Keycloak OIDC + MFA + RBAC]
-        Fraud[Explainable fraud module inside API]
-        Ingest[Authenticated log ingestion gateway]
-    end
-    subgraph DATA[data network]
-        Store[(Synthetic account / payment data)]
-        Vault[Vault PKI and transit]
-    end
-    subgraph MGMT[mgmt network]
-        SIEM[Local log collector + SIEM]
-    end
-    Browser -->|Local HTTPS entry| WAF
-    WAF -->|Proposed mTLS| API
-    Browser -->|OIDC through proxy| WAF
-    WAF -->|Auth route| IAM
-    API -->|JWKS / issuer metadata| IAM
-    API -->|Scoped read / write| Store
-    API -->|Evaluate synthetic transactions| Fraud
-    API -->|Scoped secrets access| Vault
-    API -->|Redacted audit events| Ingest
-    WAF -->|Filtered access events| Ingest
-    IAM -->|Identity events| Ingest
-    Ingest -->|Authenticated ingestion| SIEM
+    Analyst[Local analyst browser] -->|Same-origin HTTP on loopback| Server[Python defense-center server]
+    Server --> Rules[Synthetic event detection]
+    Server --> Fraud[Explainable fraud scoring]
+    Server --> Response[Controlled exercise transitions]
+    Rules --> Store[(Local SQLite state)]
+    Fraud --> Store
+    Response --> Store
+    Store --> Audit[HMAC-chained audit evidence]
+    Server --> Report[Downloadable evidence report]
 ```
 
-This is a design, not a running deployment. Boxes show primary logical zones; multi-network service membership and separate administration paths are specified in the [architecture and trust boundaries](docs/architecture.md). Docker networks provide connectivity separation, not complete zero-trust enforcement. Service identities, authorization, egress policy, encryption, and host controls require implementation and validation.
+The displayed bank zones are a **modeled topology**, not separately deployed banking networks. See [architecture and boundaries](docs/architecture.md), the [STRIDE threat model](docs/threat-model.md), and the [risk/control register](docs/control-register.csv).
 
-## Threat summary
+## Verify the project
 
-The [threat model](docs/threat-model.md) covers spoofed identities, transaction tampering, missing audit evidence, data disclosure, resource exhaustion, privilege escalation, and supply-chain compromise. Intended mitigations include MFA and scoped authorization, strict token and input validation, WAF rules, redacted structured logging, service authentication, and reproducible builds. No mitigation is claimed operational in Phase 1.
+```bat
+:: Windows
+py -3.12 -m unittest discover -s tests -v
+py -3.12 tools\check.py
+```
 
-The project contains no malware, exploits, attack automation, real bank integrations, real customer records, or real payment credentials. Future synthetic account identifiers will be visibly non-routable (for example, `PB-DEMO-ACCOUNT-001`), not valid banking destinations. Detection scenarios will generate local event fixtures only.
+```sh
+# Linux / macOS
+python3 -m unittest discover -s tests -v
+python3 tools/check.py
+```
 
-## Repository map
+With Node installed, `node --check portbug/static/app.js` also checks JavaScript syntax. Node is a development check, not a runtime dependency. The [CI workflow](.github/workflows/ci.yml) runs checks on Windows and Linux; a workflow file alone is not proof of a completed passing CI run.
 
-| Path | Responsibility | Delivery |
-| --- | --- | --- |
-| [AGENTS.md](AGENTS.md) | Conventions, commands, definition of done | Phase 1 |
-| [docs/](docs/README.md) | Architecture, threats, decisions, governance | Phases 1 and 6 |
-| [app/](app/README.md) | Minimal secure FastAPI demo | Phase 2 |
-| [infra/](infra/README.md) | Compose, reverse proxy/WAF, IAM, Vault | Phase 2 |
-| [devsecops/](devsecops/README.md) | Scanners, SBOM, signing, policy as code | Phase 3 |
-| [detection/](detection/README.md) | SIEM, Sigma, synthetic event generator | Phase 4 |
-| [fraud/](fraud/README.md) | Explainable rules and small ML baseline | Phase 5 |
-| [pentest-lab/](pentest-lab/README.md) | Defensive local verification reports | Phases 2–7 |
-| [tests/](tests/README.md) | Phase-specific validation | Each phase |
-| [tools/check_repository.py](tools/check_repository.py) | Dependency-free scaffold linter | Phase 1 |
+See the [validation record](docs/validation.md) for the checks performed during this rebuild and their limits.
 
-Governance deliverables will map controls to verified primary sources, including Swiss requirements and international frameworks. They will distinguish applicability, assumptions, gaps, and evidence. No legal review or framework certification is implied. The Switzerland-only data-residency requirement is a **deployment assumption**, not a guarantee about this cloud development host; see [ADR 0001](docs/adr/0001-local-defensive-lab.md).
+## Security preparation and scope
 
-## Contributing and license
+- [Incident playbooks](docs/incident-playbooks.md): credential abuse, suspicious payments, data export, privileged changes, and recovery.
+- [Operations](docs/operations.md): local startup, evidence, backups, and restoration.
+- [Control register](docs/control-register.csv): risk owners, treatments, current status, and evidence requirements.
+- [Security policy](SECURITY.md): safe reporting and defensive testing boundaries.
+- [Contributing](CONTRIBUTING.md): commands, synthetic-data conventions, and review requirements.
 
-Follow [AGENTS.md](AGENTS.md), keep changes within the requested phase, run both validation commands, and use conventional commits. Never commit `.env`, private keys, credentials, or real personal data. [`.env.example`](.env.example) documents future configuration without secrets. The project is licensed under the [MIT License](LICENSE).
+All customer-like identities, account identifiers, event histories, and transaction records are synthetic. The application does not connect to real banks, SWIFT, payment networks, threat-intelligence services, or external telemetry. Framework references are educational; no banking authorization, compliance certification, or legal assurance is claimed.
+
+Licensed under the [MIT License](LICENSE). **Portbug Bank Cyber Defense Center — made by Vaibhav Thakur.**
