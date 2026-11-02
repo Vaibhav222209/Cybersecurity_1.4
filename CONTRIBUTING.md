@@ -1,10 +1,12 @@
-# Contributing
+# Contributing to Portbug Bank
 
-This is **Portbug Bank Cyber Defense Center, made by Vaibhav Thakur**. Read [AGENTS.md](AGENTS.md), [architecture](docs/architecture.md), and [security policy](SECURITY.md) before changing the project.
+**Made by Vaibhav Thakur.** Keep contributions focused on a clear banking or security behavior and preserve the distinction between local demonstration evidence and production assurance.
 
-Use Python 3.12+ standard-library code and local HTML/CSS/JavaScript. Keep startup independent of Make, npm packages, cloud services, and real credentials. Maintain Windows-friendly paths and explicit LF output when generating text fixtures.
+## Development
 
-## Checks
+Use the existing checkout with Python 3.12 or later. The runtime and tests use the standard library; the interface uses local HTML/CSS/JavaScript. Start with `py -m portbug` on Windows or `python3 -m portbug` on Linux/macOS. Use a separate `--data-dir` for experiments.
+
+Before committing:
 
 ```sh
 python3 -m unittest discover -s tests -v
@@ -13,16 +15,16 @@ node --check portbug/static/app.js
 git diff --check
 ```
 
-On Windows, replace `python3` with an installed supported launcher such as `py -3.12`; Node is needed only for the JavaScript syntax check. Do not claim a browser test, scanner, CI job, or restore rehearsal passed unless it was actually executed.
+On Windows, replace `python3` with `py`. Node is needed only for the JavaScript syntax check. Changes to the interface also need browser checks for keyboard navigation, mobile layout, authentication/session changes, and the affected payment workflow.
 
-## Review requirements
+## Financial and security invariants
 
-- Use synthetic inputs and reserved example network addresses only. No real IBANs, payment endpoints, credentials, customer names, or host telemetry.
-- Give every detection meaningful positive and negative tests. Explain thresholds, technique references, expected false positives, and data-source requirements.
-- Keep fraud decisions advisory and explainable. Bound inputs, reject invalid data, and preserve ordered incident transitions.
-- Validate request boundaries and persist state/audit changes consistently. A control should fail closed without pretending unavailable dependencies are healthy.
-- Treat UI labels as claims: mark implemented behavior, modeled scenarios, and planned production controls accurately.
-- Preserve author attribution and MIT terms. Use conventional commits such as `fix: reject invalid incident transitions`.
-- Keep `.local/`, keys, databases, exports, and backups out of version control. Inspect the staged diff before committing.
+- Store CHF money as integer cents and reject unsupported precision, negative amounts, and insufficient funds.
+- Enforce account ownership and roles on the server, including direct API requests.
+- Preserve total synthetic funds across balances and pending reservations.
+- Make duplicate submissions safe through idempotency; reject reuse of a key with different payment contents.
+- Prevent an instruction's author from approving it; require a reason-bearing decision and retain its history.
+- Test accepted and rejected operations, atomic rollback, restart persistence, concurrency, and recovery.
+- Do not weaken CSRF, session, password, TOTP, or audit validation to make a test pass.
 
-Document behavior changes and remaining risks with the same care as implementation. Never suppress a finding solely to make a demonstration appear advanced.
+Use invented identifiers and reserved documentation addresses. Never add real bank data, credentials, private keys, runtime databases, or external telemetry. Describe material limitations and unrun checks accurately. Use conventional commits such as `fix: reject duplicate payment decisions` and explain the concrete trigger, changed behavior, and validation in a pull request.

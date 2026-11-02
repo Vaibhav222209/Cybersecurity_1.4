@@ -1,87 +1,62 @@
-# Architecture and assurance boundaries
+# Architecture: banking decisions under security controls
 
-**Portbug Bank Cyber Defense Center · Made by Vaibhav Thakur.** Portbug Bank is a fictional Zurich institution. This document separates the running exercise from the production banking architecture it models.
+**Portbug Bank · Zurich · Made by Vaibhav Thakur.** The running system is a local banking application for synthetic CHF accounts. It combines customer workflows and a separately authorized operator workspace.
 
-## Running system
-
-The application runs as one Python process serving local static assets and JSON APIs. It evaluates synthetic events, scores synthetic transactions, controls incident state transitions, and persists state together with a chained audit record. A browser is the only required client. There are no third-party runtime packages, remote fonts, external scripts, or required cloud services.
+## Runtime and data flow
 
 ```mermaid
-flowchart TB
-    subgraph Client[Local browser]
-        UI[Defense-center interface]
-    end
-    subgraph Process[Local Python process]
-        HTTP[Bounded HTTP and static routes]
-        Guard[Host / Origin / CSRF checks]
-        Engine[Event detection and fraud rules]
-        Workflow[Ordered incident transitions]
-        Evidence[Audit verification and export]
-    end
-    subgraph Disk[Ignored local state directory]
-        DB[(SQLite state and audit records)]
-        Key[Generated audit key]
-    end
-    UI --> HTTP
-    HTTP --> Guard
-    Guard --> Engine
-    Guard --> Workflow
-    Engine --> DB
-    Workflow --> DB
-    DB --> Evidence
-    Key --> Evidence
-    Evidence --> HTTP
+flowchart LR
+    Customer[Customer browser] --> HTTP[Loopback HTTP and local assets]
+    Operator[Separate operator session] --> HTTP
+    HTTP --> Auth[Password / session / optional TOTP]
+    Auth --> Guard[Role and account ownership checks]
+    Guard --> Payment[Payment validation and risk rules]
+    Payment --> Review[Independent approval or rejection]
+    Payment --> Store[(SQLite banking state)]
+    Review --> Store
+    Store --> Ledger[Balances, reservations and ledger]
+    Store --> Audit[State-bound HMAC audit]
+    Guard --> Workbench[Labeled rule backtesting]
+    Auth --> Identity[(Local users and sessions)]
 ```
 
-## Interfaces and data flows
+The standard-library Python server serves only its explicit local asset/API routes. The browser submits structured requests; the server authenticates and validates every mutation. The interface is not an authorization boundary. No workflow contacts a bank, clearing network, card processor, external identity provider, or telemetry service.
 
-| Interface | Purpose | Boundary and controls |
+## Identity and roles
+
+First-run setup creates the initial administrator with an operator-chosen password; there are no embedded credentials. Password verification uses scrypt. Opaque sessions are retained on the server and represented by an HttpOnly, SameSite cookie. CSRF tokens are associated with the current authenticated or pre-authentication session. Optional authenticator enrollment uses TOTP and must be confirmed before becoming active.
+
+| Role | Banking access | Operational access |
 | --- | --- | --- |
-| Static HTML/CSS/JS | Render the operator console | Fixed local assets, restrictive CSP, no external dependencies |
-| `GET /api/health` | Local readiness response | Reports application availability; does not certify security |
-| `GET /api/session` | Establish a browser write token | Same-origin local client; not a user identity or privileged login |
-| `GET /api/state` | Read exercise state and audit summary | Synthetic records only, no secrets in the response |
-| `POST /api/scenarios` | Generate and evaluate a bounded local fixture | Host/Origin checks, CSRF token, schema and scenario allowlist |
-| `POST /api/respond` | Advance an exercise alert | Allowed action and ordered transition validation; attributable exercise audit |
-| `GET /api/evidence` | Download a report for review | Excludes audit key; reports the chain check and local state |
-| SQLite transaction | Persist a state change with audit evidence | Atomic updates; local filesystem permissions remain a host prerequisite |
+| Customer | Own accounts, permitted beneficiaries, own payments and activity | Personal security settings |
+| Operator | No authority to spend another customer's funds | Review queue, permitted independent payment decisions, events, backtesting and evidence |
+| Administrator | Own customer-facing accounts; administration is not an ownership bypass | Create local users, change allowed risk thresholds, and operator functions |
 
-The session token prevents cross-site writes; it is not authentication. Anyone who can access the trusted local application may operate the synthetic exercise. Do not expose this server as an organizational SOC or internet-facing bank application.
+The author of a held instruction cannot approve it. A second operator must use a separate local account. This validates separation of duties within the application; a trusted host administrator can still control the local installation and user database.
 
-## Modeled bank zones
+## Payment invariants
 
-The console uses a bank-like topology to organize observations and responsibilities:
+1. Parse decimal CHF input into integer cents and reject unsupported precision or invalid values.
+2. Verify the authenticated customer/admin owns the source account and that it is usable.
+3. Check available funds, beneficiary validity, and a persisted idempotency key bound to the instruction's contents.
+4. Evaluate configured risk rules. A settled instruction debits the source and credits the recipient. An instruction requiring review debits/reserves the source amount without crediting the recipient yet.
+5. An independent approval credits the recipient once; a rejection returns the reservation to the sender once. A completed decision cannot be replayed as another credit/refund.
+6. Commit the banking state and associated audit append in one SQLite transaction. Rejected operations must leave balances and evidence unchanged.
 
-| Modeled zone | Representative assets | Intended production boundary |
-| --- | --- | --- |
-| Edge | Customer channel, reverse proxy/WAF | Authenticated ingress, TLS policy, bounded requests, restricted egress |
-| Application | Banking API, payment orchestration, identity | Validated sessions/tokens, object authorization, service identity, separation of duties |
-| Data | Synthetic ledger, audit storage, key services | Least-privileged access, encrypted storage, rotation and recovery |
-| Management | Monitoring, response, administration, backup | Privileged identity separation, MFA, independent evidence, tested restoration |
+Conservation is measured across all modeled balances plus amounts held for pending instructions. The application does not silently discard payment receipts or idempotency evidence when a display limit is reached; explicit exercise capacity limits are preferable to losing financial invariants.
 
-These are **modeled assets**, not deployed containers or enforced network segments. An advanced production system would require tested network enforcement, real IAM, workload authentication, independent telemetry, off-host evidence, and separate recovery domains. The local application does not claim those controls.
+## Security analysis and evidence
 
-## State and audit design
+Risk rules produce explanations for their payment decisions. Administrators may adjust allowed high-value and velocity settings. The workbench evaluates candidate settings against labeled cases and calculates true/false positives, true/false negatives, precision, and recall. That evidence applies to the supplied cases; it does not establish real fraud or AML effectiveness.
 
-The data directory holds persistent exercise state, audit records, and a locally generated HMAC key. A mutation is accepted only when its state update and associated audit append can be committed consistently. Audit entries link to earlier evidence using HMAC-SHA256 and bind a digest of the saved state. A failed chain/state check prevents further mutations. The interface exposes verification results and abbreviated chain identifiers; exports must never include the key.
+Banking changes are recorded with actor context and a keyed HMAC-SHA256 chain that binds the saved banking-state digest. Verification failures block further banking mutations. The key and database live on the same trusted host, so this is tamper detection under a trusted-key assumption, not immutable or nonrepudiable evidence. The banking-state digest does not cover the separate authentication/session tables. A complete earlier database/key snapshot can also be restored without independent rollback detection.
 
-This detects unauthenticated modification when the verification key and expected history remain trustworthy. It does not prevent a host administrator with the key from rewriting the entire history, demonstrate non-repudiation, or replace immutable off-host logging. The database and key are in the same local trust domain. Deletion, rollback of both files, and unauthorized host access remain residual risks.
+## Storage and recovery
 
-Initial findings and trend points are seeded fixtures. They are not measurements of a live bank, detection latency, prevented financial losses, or attack volume. Fraud scores come from deterministic explainable rules, not a trained ML model.
+The `.local-banking/` directory is generated and ignored. It contains the SQLite database and audit key. The database includes banking state, audit history, local user records, and session data. A verified backup must preserve the entire database and matching key. Use SQLite's backup API rather than copying a live WAL database piecemeal; rehearse restoration in a separate directory.
 
-SQLite data is not encrypted by this application. File permissions and host disk encryption are the operator's responsibility. Backups need the corresponding audit key to remain verifiable and must not be copied into Git or untrusted storage. Recovery is described in [operations](operations.md).
+Neither SQLite nor the backup is encrypted by the application. Host access controls, encrypted storage, independent evidence retention, production TLS, hardened identity infrastructure, and off-host recovery are separate deployment requirements. See [operations](operations.md).
 
-## Application security decisions
+## Zurich and production assumptions
 
-- Bind to `127.0.0.1` by default. `0.0.0.0` exists for the container-internal listener; Docker must publish only on host loopback.
-- Serve scripts and styles locally. Browser policy limits content to the application and prevents framing.
-- Reject unexpected hosts/origins, unsupported actions, invalid JSON, excessive request bodies, and invalid state transitions. Request rate controls are defense in depth, not DDoS protection.
-- Generate synthetic event records rather than sending traffic at targets. ATT&CK references describe the defensive observation, not an attack tool.
-- Keep fraud scores explainable and advisory. No score can execute a real payment or bypass authorization.
-- Keep demo response actions local. A contained exercise alert does not mean an account has been disabled in a real IAM system.
-
-## Swiss residency and governance
-
-The modeled bank is headquartered in Zurich and assumes Swiss-hosted business data, logs, backups, and administrative access. This repository does not locate the developer's machine, attest Swiss hosting, or prevent copying an export elsewhere. Synthetic data is mandatory everywhere.
-
-Any future production design needs a primary-source applicability review for FINMA operational-risk/cyber guidance, Swiss data protection and banking secrecy, critical-infrastructure incident reporting, ISO/IEC 27001, NIST CSF, PCI DSS where card-data scope applies, SWIFT CSP where actual connectivity applies, and DORA where relevant. References are a review agenda; current editions, effective dates, triggers, and legal scope must be verified. See [operations](operations.md) for sources and [the threat model](threat-model.md) for remaining risks.
+Portbug Bank is fictional and headquartered in Zurich in this model. Switzerland-only storage and administration would require verified hosting, backup, support-access, and export controls; neither a local laptop nor this repository proves residency. Banking authorization, regulatory applicability, real payment connectivity, and certification are outside this demonstration. [The threat model](threat-model.md) tracks the practical boundaries of the implemented application.

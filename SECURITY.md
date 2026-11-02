@@ -1,24 +1,25 @@
 # Security policy
 
-Portbug Bank is fictional. This local defensive exercise is made by Vaibhav Thakur and must not receive real banking credentials, account details, customer records, or production secrets.
+Portbug Bank is a fictional Zurich bank. This banking demonstration is **made by Vaibhav Thakur** and accepts synthetic funds, identities, beneficiaries, and instructions only.
 
-## Safe reporting
+## Reporting a defect
 
-For non-sensitive defects, open a GitHub issue with the affected commit, operating system/Python version, expected behavior, observed behavior, and minimal synthetic reproduction. Do not attach `.local/`, database files, audit keys, personal information, browser session tokens, or screenshots containing secrets.
+For ordinary defects, open an issue with the affected commit, operating system/Python version, expected result, and minimal synthetic reproduction. Do not upload a data directory, SQLite files, session cookies, password material, TOTP enrollment secrets, audit keys, or real personal/banking information.
 
-For a sensitive vulnerability, use GitHub's private vulnerability reporting option **if the repository owner has enabled it**. If it is unavailable, open a minimal issue asking for a private reporting channel without disclosing exploit details. No private-reporting feature or response SLA is implied by this file.
+For a sensitive vulnerability, use GitHub private vulnerability reporting if the repository owner has enabled it. Otherwise request a private contact channel without publishing exploit details. This file does not establish a reporting SLA or imply that a particular GitHub feature is enabled.
 
-## Testing boundaries
+## Supported use
 
-Test only your own local copy with synthetic fixtures. Do not scan real banks, real customers, payment networks, or unrelated infrastructure. This repository contains no malware, working exploits, credential attacks, or live-target tooling. Scenario generation produces event records, not attack traffic.
+- Run the application on your own trusted machine and keep the listener on loopback.
+- Choose new demonstration passwords. There are no shipped default logins.
+- Use distinct local accounts to test customer, operator, and administrator boundaries.
+- Exercise only this application's synthetic ledger. Do not target real banks, payment systems, or unrelated services.
+- Keep generated databases, backups, keys, and authenticator secrets out of version control.
 
-## Deployment limits
+## Protection boundaries
 
-- Bind the application to loopback; container port publications must also remain on loopback.
-- The session token and same-origin checks are CSRF defenses, not authentication or enterprise RBAC.
-- Local HTTP has no TLS; SQLite storage has no application-provided encryption.
-- The audit key and database share a host trust domain. A host administrator can forge/rewrite history; chain validation is not immutability or non-repudiation.
-- Response actions modify synthetic exercise state only. Production IAM, WAF, MFA, mTLS, SIEM, HSMs, and network segmentation are not deployed integrations.
-- Swiss residency, banking authorization, and regulatory compliance are not attested.
+The application implements local password authentication, optional TOTP, role/ownership validation, session/CSRF controls, rule-based review, independent payment decisions, and state-bound audit verification. Those controls do not turn the application into a licensed or production-ready bank.
 
-Keep dependencies, base images, action pins, and host security reviewed. CI/static checks are evidence about the checks executed; they do not establish freedom from vulnerabilities. See the [threat model](docs/threat-model.md) and [control register](docs/control-register.csv) for remaining risks.
+Loopback HTTP has no TLS, so the local session cookie is not a production HTTPS deployment. SQLite, password hashes, pending/active TOTP material, sessions, and the audit key reside on the local host. File permissions and host disk encryption are operator responsibilities. A host administrator can inspect or replace those files and code. HMAC verification does not establish immutable or independently witnessed history, and authentication tables are outside the banking-state digest.
+
+No production identity provider, WAF, HSM, external payment integration, protected multi-site recovery, or Swiss residency attestation is supplied. Review [the threat model](docs/threat-model.md) before changing exposure, identity boundaries, persistence, or payment behavior.

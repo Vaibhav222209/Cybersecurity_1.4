@@ -1,5 +1,5 @@
 .git
-.local
+.local*
 **/__pycache__
 .venv
 *.key

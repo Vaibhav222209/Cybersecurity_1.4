@@ -1,10 +1,9 @@
-.local/
+.local*/
 __pycache__/
 *.py[cod]
 .venv/
 .env
 .env.*
-!.env.example
 *.key
 *.pem
 *.sqlite3*

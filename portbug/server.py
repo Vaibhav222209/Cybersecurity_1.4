@@ -1,19 +1,32 @@
-"""Loopback-first HTTP adapter for an offline, single-operator simulation."""
+"""Authenticated, loopback-first adapter for the fictional banking workspace."""
 
-import hmac
 import json
-import secrets
 import sqlite3
 import threading
 import time
 from collections import defaultdict, deque
+from http.cookies import CookieError, SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+from .auth import Auth
+
+COOKIE = "portbug_session"
 STATIC = Path(__file__).with_name("static")
-FILES = {"/": ("index.html", "text/html"), "/style.css": ("style.css", "text/css"), "/app.js": ("app.js", "text/javascript")}
-MAX_BODY = 4096
+FILES = {"/": ("index.html", "text/html"), "/style.css": ("style.css", "text/css"), "/app.js": ("app.js", "text/javascript"), "/favicon.svg": ("favicon.svg", "image/svg+xml")}
+SCHEMAS = {
+    "/api/setup": ({"username", "password", "display_name"}, set()),
+    "/api/login": ({"username", "password"}, {"otp"}),
+    "/api/logout": (set(), set()),
+    "/api/transfer": ({"from_account", "beneficiary_id", "amount", "reference", "idempotency_key"}, set()),
+    "/api/decision": ({"transfer_id", "decision", "note"}, set()),
+    "/api/rules": ({"high_value_chf", "velocity_limit"}, set()),
+    "/api/backtest": ({"high_value_chf", "velocity_limit"}, set()),
+    "/api/users": ({"username", "password", "display_name", "role"}, set()),
+    "/api/mfa/enroll": (set(), set()),
+    "/api/mfa/confirm": ({"code"}, set()),
+}
 
 
 class Server(ThreadingHTTPServer):
@@ -21,7 +34,7 @@ class Server(ThreadingHTTPServer):
 
     def __init__(self, address, store, rate_limit=240):
         self.store = store
-        self.csrf_token = secrets.token_urlsafe(32)
+        self.auth = Auth(store)
         self.rate_limit = rate_limit
         self.requests = defaultdict(deque)
         self.limiter_lock = threading.Lock()
@@ -40,7 +53,7 @@ class Server(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "PortbugLocal/1.0"
+    server_version = "PortbugLocal/3.0"
     sys_version = ""
 
     def setup(self):
@@ -48,10 +61,16 @@ class Handler(BaseHTTPRequestHandler):
         self.connection.settimeout(5)
 
     def log_message(self, format, *args):
-        # Do not log request bodies, tokens, or arbitrary user-supplied headers.
         pass
 
-    def send(self, status, body, content_type="application/json", attachment=False):
+    def raw_cookie(self):
+        try:
+            cookies = SimpleCookie(self.headers.get("Cookie", ""))
+            return cookies[COOKIE].value if COOKIE in cookies else None
+        except CookieError:
+            return None
+
+    def send(self, status, body, content_type="application/json", cookie=None, attachment=False):
         if not isinstance(body, bytes):
             body = json.dumps(body, ensure_ascii=True).encode()
         self.send_response(status)
@@ -65,92 +84,180 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        if cookie is not None:
+            age = 0 if cookie == "" else 28800
+            self.send_header("Set-Cookie", f"{COOKIE}={cookie}; Path=/; HttpOnly; SameSite=Strict; Max-Age={age}")
         if status == 429:
             self.send_header("Retry-After", "60")
         if attachment:
-            self.send_header("Content-Disposition", 'attachment; filename="portbug-evidence.json"')
+            self.send_header("Content-Disposition", 'attachment; filename="portbug-banking-evidence.json"')
         self.end_headers()
         self.wfile.write(body)
 
     def guard(self):
         hosts = {f"127.0.0.1:{self.server.server_port}", f"localhost:{self.server.server_port}"}
         if self.headers.get("Host") not in hosts:
-            self.send(403, {"error": "Untrusted Host header. Use the local startup URL."})
+            self.send(403, {"error": "Untrusted Host header. Open the local startup URL."})
             return False
         origin = self.headers.get("Origin")
         if origin is not None and origin not in {f"http://{host}" for host in hosts}:
-            self.send(403, {"error": "Cross-origin requests are not allowed"})
+            self.send(403, {"error": "Cross-origin requests are not permitted."})
             return False
         if not self.server.allowed(self.client_address[0]):
-            self.send(429, {"error": "Local request limit reached; retry in 60 seconds"})
+            self.send(429, {"error": "Local request limit reached. Retry in a minute."})
             return False
         return True
+
+    def current_user(self):
+        user = self.server.auth.session(self.raw_cookie())
+        if user is None:
+            self.send(401, {"error": "Sign in to your local banking workspace."})
+        return user
+
+    def require_role(self, user, roles):
+        if user["role"] not in roles:
+            raise PermissionError("Your local role does not permit this operation.")
 
     def do_GET(self):
         if not self.guard():
             return
+        try:
+            self.get_route()
+        except PermissionError as exc:
+            self.send(403, {"error": str(exc)})
+        except (ValueError, TypeError, sqlite3.DatabaseError):
+            self.send(503, {"status": "integrity-failed", "audit_valid": False, "error": "Local state cannot be verified. Restore a verified backup."})
+
+    def get_route(self):
         path = unquote(urlsplit(self.path).path)
         if path in FILES:
-            filename, content_type = FILES[path]
-            self.send(200, (STATIC / filename).read_bytes(), content_type)
-        elif path == "/api/session":
-            self.send(200, {"csrf_token": self.server.csrf_token})
-        elif path in {"/api/state", "/api/evidence", "/api/health"}:
-            try:
-                state = self.server.store.snapshot()
-            except (ValueError, TypeError, sqlite3.DatabaseError):
-                self.send(503, {"status": "integrity-failed", "audit_valid": False, "error": "Local state cannot be verified. Restore a verified backup."})
-                return
-            if path == "/api/health":
-                valid = state["audit"]["valid"]
-                self.send(200 if valid else 503, {"status": "ok" if valid else "integrity-failed", "mode": "local-simulation", "audit_valid": valid})
-            elif path == "/api/evidence":
-                self.send(200, {"project": "Portbug Bank", "author": "Vaibhav Thakur", "disclaimer": "Synthetic local demonstration; not a compliance attestation", "state": state}, attachment=True)
-            else:
-                self.send(200, state)
+            filename, kind = FILES[path]
+            self.send(200, (STATIC / filename).read_bytes(), kind)
+            return
+        if path == "/api/session":
+            raw, csrf = self.server.auth.preauth(self.raw_cookie())
+            self.send(200, {"setup_required": self.server.auth.setup_required(), "csrf_token": csrf, "user": self.server.auth.session(raw)}, cookie=raw)
+            return
+        if path == "/api/health":
+            state = self.server.store.raw_snapshot()
+            valid = state["audit"]["valid"]
+            self.send(200 if valid else 503, {"status": "ok" if valid else "integrity-failed", "audit_valid": valid, "mode": "fictional-banking-lab"})
+            return
+        if path not in {"/api/state", "/api/users", "/api/evidence"}:
+            self.send(404, {"error": "Not found."})
+            return
+        user = self.current_user()
+        if user is None:
+            return
+        if path == "/api/users":
+            self.require_role(user, {"admin"})
+            self.send(200, {"users": self.server.auth.users()})
+        elif path == "/api/evidence":
+            self.require_role(user, {"admin", "operator"})
+            self.send(200, {"project": "Portbug Bank", "author": "Vaibhav Thakur", "scope": "Fictional local banking exercise; synthetic funds and identifiers", "state": self.server.store.snapshot(user)}, attachment=True)
         else:
-            self.send(404, {"error": "Not found"})
+            self.send(200, self.server.store.snapshot(user))
+
+    def read_payload(self, path):
+        if path not in SCHEMAS:
+            self.send(404, {"error": "Not found."})
+            return None
+        if self.headers.get("Origin") != f"http://{self.headers.get('Host')}":
+            self.send(403, {"error": "An exact same-origin Origin header is required."})
+            return None
+        if not self.server.auth.csrf_valid(self.raw_cookie(), self.headers.get("X-CSRF-Token", "")):
+            self.send(403, {"error": "Invalid or expired request token. Reload the page."})
+            return None
+        if self.headers.get("Transfer-Encoding") or self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
+            self.send(415, {"error": "Use a bounded application/json request."})
+            return None
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        if not 0 < length <= 8192:
+            self.send(413, {"error": "Request body must contain 1–8192 bytes."})
+            return None
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+            required, optional = SCHEMAS[path]
+            if not isinstance(payload, dict) or not required <= set(payload) or set(payload) - required - optional:
+                raise ValueError("Unexpected or missing request fields.")
+            for name, value in payload.items():
+                if name == "velocity_limit":
+                    if isinstance(value, bool) or not isinstance(value, int):
+                        raise ValueError("Velocity limit must be an integer.")
+                elif not isinstance(value, str) or len(value) > (128 if name == "password" else 500):
+                    raise ValueError("Request values must be bounded strings.")
+            return payload
+        except (ValueError, UnicodeError) as exc:
+            self.send(400, {"error": str(exc)})
+            return None
+
+    def record(self, kind, detail, user_id=0):
+        self.server.store.security_event(kind, detail, user_id)
 
     def do_POST(self):
         if not self.guard():
             return
-        if self.headers.get("Origin") != f"http://{self.headers.get('Host')}":
-            self.send(403, {"error": "An exact same-origin Origin header is required"})
-            return
-        token = self.headers.get("X-CSRF-Token", "")
-        if not token.isascii() or not hmac.compare_digest(token, self.server.csrf_token):
-            self.send(403, {"error": "Invalid local CSRF token. Refresh the page."})
-            return
         path = urlsplit(self.path).path
-        required = {"/api/scenarios": {"scenario"}, "/api/respond": {"alert_id", "action"}}
-        if path not in required:
-            self.send(404, {"error": "Not found"})
-            return
-        if self.headers.get("Transfer-Encoding") or self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
-            self.send(415, {"error": "Use a bounded application/json request"})
+        payload = self.read_payload(path)
+        if payload is None:
             return
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            length = -1
-        if not 0 < length <= MAX_BODY:
-            self.send(413, {"error": "JSON body must be between 1 and 4096 bytes"})
-            return
-        try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            if not isinstance(payload, dict) or set(payload) != required[path]:
-                raise ValueError("Unexpected or missing JSON fields")
-            if not all(isinstance(value, str) and 0 < len(value) <= 80 for value in payload.values()):
-                raise ValueError("All fields must be nonempty strings of at most 80 characters")
-        except (ValueError, UnicodeError) as exc:
-            self.send(400, {"error": str(exc)})
-            return
-        try:
-            result = self.server.store.change("scenario" if path == "/api/scenarios" else "response", payload)
+            self.post_route(path, payload)
+        except PermissionError as exc:
+            self.send(403, {"error": str(exc)})
         except ValueError as exc:
             self.send(409, {"error": str(exc)})
-            return
         except (TypeError, sqlite3.DatabaseError):
             self.send(503, {"error": "Local state cannot be verified. Restore a verified backup."})
+
+    def post_route(self, path, payload):
+        auth = self.server.auth
+        if path in {"/api/setup", "/api/login"}:
+            if not auth.allow_login(self.client_address[0]):
+                self.send(429, {"error": "Too many sign-in attempts. Wait a minute before retrying."})
+                return
+            if path == "/api/setup":
+                user = auth.create_user(**payload, role="admin", first=True)
+                raw, csrf = auth.new_session(user["id"])
+                self.record("workspace_setup", "Local administrator account created.", user["id"])
+            else:
+                try:
+                    user, raw, csrf = auth.login(**payload)
+                except ValueError:
+                    self.record("login_failed", "A local sign-in attempt was rejected.")
+                    self.send(401, {"error": "Sign-in failed. Check your credentials and verification code."})
+                    return
+                self.record("login_success", "Local session established.", user["id"])
+            auth.logout(self.raw_cookie())
+            self.send(200, {"user": user, "csrf_token": csrf}, cookie=raw)
             return
-        self.send(200, result)
+        user = self.current_user()
+        if user is None:
+            return
+        if path == "/api/logout":
+            auth.logout(self.raw_cookie())
+            self.record("logout", "Local session ended.", user["id"])
+            self.send(200, {}, cookie="")
+        elif path == "/api/users":
+            self.require_role(user, {"admin"})
+            # User credentials, starting accounts and audit evidence commit together.
+            with self.server.store.lock, self.server.store.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                created = auth.create_user(**payload, connection=connection)
+                self.server.store.provision(created, user, connection=connection)
+            self.send(200, {"user": created})
+        elif path == "/api/mfa/enroll":
+            self.send(200, auth.enroll(user["id"]))
+        elif path == "/api/mfa/confirm":
+            updated = auth.confirm(user["id"], payload["code"], keep_token=self.raw_cookie())
+            self.record("mfa_enabled", "Authenticator verification enabled for a local account.", user["id"])
+            self.send(200, {"user": updated})
+        elif path == "/api/backtest":
+            self.require_role(user, {"operator", "admin"})
+            self.send(200, self.server.store.backtest(payload, user))
+        else:
+            action = {"/api/transfer": "transfer", "/api/decision": "decision", "/api/rules": "rules"}[path]
+            self.send(200, self.server.store.change(action, payload, user))

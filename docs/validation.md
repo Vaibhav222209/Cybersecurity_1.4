@@ -1,22 +1,24 @@
-# Rebuild validation record
+# Banking rebuild validation
 
-Portbug Bank Cyber Defense Center · Made by Vaibhav Thakur · 2 November 2026.
+Made by Vaibhav Thakur · 2 November 2026.
 
-The rebuilt source was checked in the development environment before publication. These observations are about this local synthetic demonstration, not a security assessment of a real bank.
+The previous standalone dashboard was replaced by a banking application whose security controls govern actual local account and payment operations. Every balance, beneficiary and payment in these checks is synthetic.
 
-| Check | Observed result |
+| Check | Result in the development environment |
 | --- | --- |
-| Python 3.12.14 / Linux, `python3 -m unittest discover -s tests -v` | 34 tests passed, including actual HTTP requests and SQLite operations |
-| Detection and fraud behavior | All five rule families tested against matching/nonmatching fixtures; boundary and malformed inputs tested; weighted fraud reasons checked |
-| Incident response | Ordered triage, containment, resolution accepted; skipped/repeated transitions rejected |
-| Local HTTP controls | Valid writes accepted; foreign Host/Origin, missing/malformed CSRF, oversized/malformed bodies, unknown fields, rate excess and file traversal rejected |
-| Audit and persistence | Restart persistence, concurrent updates, modified audit/state, wrong key, and malformed saved JSON exercised; integrity failures detected |
-| Recovery | SQLite backup restored into a separate temporary directory with the matching key; restored state and chain matched, then accepted a new mutation |
-| Source hygiene | Python syntax, local documentation links, LF endings, CSV structure and focused secret-pattern checks passed with `python3 tools/check.py` |
-| JavaScript | `node --check portbug/static/app.js` passed |
-| Chromium browser | All six views, scenario execution, ordered incident actions, evidence download, keyboard dialog/focus behavior, and 390px mobile layout passed; no JavaScript/CSP console errors observed |
-| Docker Compose | Digest-pinned image built; non-root/read-only container passed health checks; host browser loaded the loopback publication and executed a payment scenario with a valid audit append |
+| Python 3.12.14 / Linux | 56 unit and integration tests passed |
+| Authentication | Salted scrypt, hashed session tokens, idle/absolute expiration, logout invalidation, session-bound CSRF, throttled sign-in, and private public-user projections tested |
+| TOTP | RFC 6238 vectors, confirmed enrollment, missing/incorrect code rejection, consumed-code replay rejection, attempt throttling, and revocation of other sessions tested |
+| Payments | Ownership, integer cents, insufficient funds, idempotent retries, atomic failure, concurrent overspending prevention, and persisted funds-conservation invariants tested |
+| Independent approval | Creator cannot decide their own payment; another authorized operator can approve once or reject/refund once; decision note and case history retained |
+| Privacy and roles | Customer API responses exclude other customers' accounts and security history; privileged endpoints reject customer sessions; user/account creation rolls back together on audit failure |
+| Detection workbench | Fixed-label fixtures produce true/false positives and negatives; precision and recall actually recompute from candidate rules; backtesting does not change balances or policy |
+| Recovery | Database/key restoration retains balances, audit verification, identities and session records; wrong/tampered state fails verification |
+| Browser | First setup, identity creation, payment confirmation, settlement, held-payment approval as a separate operator, backtest, evidence download, TOTP enrollment, keyboard dialogs, and 390px mobile navigation/logout exercised in Chromium |
+| Session presentation | Logging out clears privileged rendered data and draft passwords; signing in as another role starts in the permitted workspace |
+| Source checks | Python syntax, documentation links, LF endings, focused key-pattern checks, and JavaScript syntax checked |
+| Optional Docker | Digest-pinned non-root/read-only container built and passed readiness; host access and authenticated banking operations checked separately from a listening port |
 
-The repository includes a Windows/Linux Python 3.12/3.14 CI matrix. Native Windows and Python 3.14 were not available for these local checks; inspect the completed GitHub Actions run before claiming those combinations pass. No production SAST/SCA/container-scanner assessment, external IAM/SIEM integration, independent audit, regulatory certification, or real incident-response capability is implied.
+Screenshots in this repository capture the real running interface with synthetic data. No runtime database, credentials, session tokens, TOTP seeds or audit keys are included. The browser test uses temporary random passwords and an isolated workspace.
 
-The README screenshot is a capture of the actual dashboard with synthetic initial state. Chart history and initial alerts are seeded illustrations. Response actions affect this demonstration only. Backup tests show consistent local recovery; they do not measure a production RTO or guarantee recovery after loss of the host and key.
+The Windows/Linux Python 3.12/3.14 CI matrix is configured. Native Windows and Python 3.14 results require completed remote CI evidence; they are not inferred from the local Linux run. These checks do not establish production banking readiness, regulatory compliance, hardware key protection, immutable logs or Swiss hosting.

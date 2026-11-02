@@ -1,108 +1,108 @@
-# Portbug Bank: threat model and assurance boundaries
+# Threat model: secure banking workflows
 
-**Made by Vaibhav Thakur.** Portbug Bank is a fictional private bank based in Zurich. This model describes a local defensive simulation, not the security assessment of a licensed financial institution.
+**Portbug Bank · Zurich · Made by Vaibhav Thakur.** This model covers a local banking application with synthetic CHF balances, payments, approval cases, and security operations. Portbug Bank is fictional; no payment leaves the application or reaches a banking network.
 
-## Scope and assets
+## Security objectives
 
-The runnable system consists of a browser interface, a Python HTTP service, a deterministic synthetic detection/fraud engine, a local incident state machine, and SQLite persistence with a keyed audit chain. The browser presents invented security records; scenario buttons create local event fixtures. There are no real banking connections, customer records, identity-provider actions, or external security integrations.
+The useful security question is whether a control governs a real application operation. A payment form, a risk score, and an approval button must therefore be checked against the server-side ledger and identity boundary, not treated as evidence by themselves.
 
-| Asset | Security objective | Explicit limit |
-| --- | --- | --- |
-| A1: Synthetic event and incident state | Keep displayed decisions consistent, bounded, and attributable to a local operation | A simulated containment action does not lock an actual account or revoke a real token |
-| A2: Detection and fraud logic | Explain each result and reject malformed or unsupported operations | Synthetic rules do not demonstrate real fraud/AML effectiveness or production detection coverage |
-| A3: Audit chain and generated local key | Detect changes to retained entries when checked with the expected key and chain history | An administrator possessing the key can rewrite the chain; it is not immutable evidence or nonrepudiation |
-| A4: Source and release contents | Reproduce reviewed behavior without runtime package downloads | Source review and tests do not replace production SCA, image signing, or independent assessment |
-| A5: Local availability and saved demo state | Bound abusive input and restore an internally consistent local demonstration | One process and one host provide no production availability or fault-domain separation |
+| Asset | Required property |
+| --- | --- |
+| Account ownership and private statements | Each user sees authorized account data and can debit only their own active accounts, including when the caller is an administrator |
+| Synthetic funds and ledger receipts | Integer-cent arithmetic, no overspending, atomic postings, conserved funds, and an unambiguous history of held and completed payments |
+| Payment decisions | A high-risk payment requires an authorized operator other than its creator; a repeated decision cannot pay or refund twice |
+| User credentials and sessions | Operator-chosen passwords, salted scrypt hashes, bounded login attempts, expiring server-side sessions, and optional confirmed TOTP enrollment |
+| Rule configuration and security records | Only authorized roles change policy or inspect security evidence; rule explanations and backtest results remain reviewable |
+| Audit and recovery material | Domain-state changes bind to a keyed audit chain; a verified backup preserves the database and corresponding key together |
 
-The host user, Python installation, browser, and operating system are trusted for ordinary operation. A malicious local administrator can inspect memory and files, replace code, or alter saved state. This is outside the protection provided by the demo. Swiss-only operation is a modeled bank requirement; this repository does not attest where a laptop, cloud workspace, CI runner, log, or backup is located.
+## Actors, scope, and trust
+
+- A **customer** operates their own synthetic accounts and reads their own banking history.
+- An **operator** reviews held payments and security evidence. That role does not authorize debiting another customer's account.
+- An **administrator** provisions local users and changes risk thresholds. Administrative access does not override payment ownership or the prohibition on self-approval.
+- An **untrusted browser origin** may attempt to reach the local service. Host, Origin, CSRF, cookie, and request-validation controls constrain that boundary.
+- The **host owner** controls the code, database, runtime, and local keys. A hostile host owner is outside the assurance provided by this application.
+
+The first-run administrator chooses their own credentials. There are no shipped login credentials. Start setup on a trusted machine with the loopback listener; whoever legitimately claims the first local workspace obtains its administration role. The app is not intended as an unattended public onboarding endpoint.
+
+Local HTTP, the Python runtime, the browser, and the host filesystem form the operating environment. SQLite and TOTP enrollment material are not encrypted by the application. Swiss residency is a modeled requirement of the fictional bank, not an attestation of a laptop, cloud workspace, CI runner, export, or backup location.
 
 ## Trust boundaries
 
 ```mermaid
 flowchart LR
-    Browser[Local browser: untrusted request input]
-    API[Loopback Python HTTP service]
-    Engine[Validated scenario and response logic]
-    Store[(SQLite state and audit entries)]
-    Key[Generated local HMAC key]
-    Evidence[Downloaded synthetic evidence]
-    Browser -->|TB1: Host / Origin / request limits| API
-    API -->|TB2: validated operation and CSRF token| Engine
-    Engine -->|TB3: atomic state and audit update| Store
-    Key -->|TB4: host-controlled key custody| Store
-    API -->|TB5: same-origin read / evidence export| Browser
-    Browser -->|Explicit download| Evidence
+    Browser[Customer or operator browser]
+    HTTP[Loopback HTTP and request validation]
+    Identity[Session identity and role checks]
+    Banking[Ownership and payment rules]
+    Review[Independent approval workflow]
+    Store[(Atomic local banking state)]
+    Audit[State-bound HMAC audit]
+    Auth[(Credential and session tables)]
+    Backup[Verified local recovery copy]
+    Browser -->|TB1: browser origin and bounded input| HTTP
+    HTTP -->|TB2: authenticated identity| Identity
+    Identity --> Banking
+    Identity --> Review
+    Identity --> Auth
+    Banking -->|TB3: balance and posting invariants| Store
+    Review -->|TB4: authorized decision| Store
+    Store -->|TB5: domain state and audit transaction| Audit
+    Store -->|TB6: recovery trust domain| Backup
+    Auth --> Backup
+    Audit --> Backup
 ```
 
-| Boundary | Required property | Why it matters |
-| --- | --- | --- |
-| TB1: Browser/network to HTTP handler | Loopback default, exact allowed Host, bounded requests, safe static routing | An unrelated website or unintended network client must not acquire a general-purpose local administration endpoint |
-| TB2: HTTP handler to application operation | Same-origin checks and CSRF token on writes; allowlisted scenario/action fields; ordered response transitions | UI affordances are not authorization or validation; direct requests must follow the same operation rules |
-| TB3: Application to persistence | Atomic state/audit persistence and bounded retained records | A failed operation must not leave a misleading partial incident update or unbounded event history |
-| TB4: Audit verifier to local key/history | Verify the chain with the expected key; retain matching key and database | Detection of accidental or unkeyed modification depends on keeping the reference material trustworthy |
-| TB5: State to browser/export | Serve JSON with safe content types; render strings as text; label exported data synthetic | Stored text and downloaded evidence must not become executable markup or be mistaken for actual bank telemetry |
-| TB6: Repository to local execution | Reviewable source, automated tests on Windows/Linux, no runtime third-party package requirement | Reproducibility and regression checks reduce setup drift; they do not prove an artifact is vulnerability-free |
+The server must enforce these properties for direct API calls as well as UI interactions. Hiding a navigation item is not a role check. A client-supplied account ID, payment status, amount, risk score, or username is not trusted authority.
 
-Host and Origin validation plus a CSRF token constrain browser-origin abuse. They do not provide user authentication or RBAC. Anyone with access to the permitted local service can operate this single-user demo. Do not expose it as a shared or Internet-facing service.
+## STRIDE review
 
-## STRIDE review by component
-
-S = spoofing, T = tampering, R = repudiation, I = information disclosure, D = denial of service, E = elevation of privilege. These are potential failure classes to test and review, not claims of observed vulnerabilities.
+S = spoofing; T = tampering; R = repudiation; I = information disclosure; D = denial of service; E = elevation of privilege. The rows describe failures to prevent and test, not observed vulnerabilities or completed test results.
 
 | Component | S | T | R | I | D | E |
 | --- | --- | --- | --- | --- | --- | --- |
-| Browser interface | Misleading connection or environment labels | Untrusted strings inserted as active markup | Operator mistakes lack visible operation results | Export or UI reveals local state | Oversized rendering work freezes the tab | UI offers invalid response transitions |
-| HTTP service | Forged Host or unrelated website reaches local API | Malformed body or unexpected route changes state | Write lacks an associated audit action | Unsafe path resolution or error text exposes local files | Large body, burst requests, or slow clients consume service resources | Browser-origin controls are mistaken for authentication |
-| Scenario/detection engine | Fabricated source identity mistaken for real telemetry | Rule logic or fixture changes alter matches | Decision lacks a source scenario and explanation | Overly detailed invented records normalize unsafe logging | Unbounded fixture growth exhausts memory/storage | Detection score is used as permission to act on real systems |
-| Fraud scoring | Wrong synthetic account attributed to a signal | Changed inputs or thresholds alter the result | Score lacks contributing reasons | Unnecessary account details appear in export | Oversized input or unsupported values break evaluation | Advisory review score becomes an authorization bypass |
-| Incident response state machine | Action appears to originate from an actual SOC identity | Skipped states or invalid action mutates an incident | Status changes lack audit records | Incident details disclose local operational state | Repeated actions create unlimited records | Simulated containment is misrepresented as real IAM enforcement |
-| SQLite and audit key | Wrong key/history presented as authentic | Entries, state, or key are edited on disk | Local administrator rewrites chain and history | Plain SQLite file or key copied by another host user | Disk full, corruption, or missing key prevents normal operation | Host file access is treated as hardware-backed key custody |
-| Source and delivery | A modified repository resembles the reviewed release | Workflow or logic changed without meaningful tests | Release evidence does not identify tested revision | Generated keys/databases accidentally committed | Platform drift breaks startup | CI permissions or container exposure exceed the demo scope |
+| Setup, login, and MFA | Wrong principal accepted or initial setup claimed unexpectedly | Enrollment or session state changed outside its owner | Sign-in and enrollment decisions lack safe security records | Password, TOTP secret, or token leaks through a response or log | Repeated expensive password checks exhaust the local process | A customer becomes an operator or administrator |
+| Browser and HTTP adapter | Forged Host or unrelated Origin reaches a trusted endpoint | Cross-site mutation or malformed JSON bypasses validation | A displayed action disagrees with the accepted operation | Unsafe rendering, path handling, or errors expose data | Oversized bodies, bursts, or slow requests exhaust resources | UI-only restrictions replace server-side checks |
+| Account projection and banking reads | Caller chooses another owner's identity | Client parameters alter account ownership or balances | Statement lacks stable payment references | Another customer's balances or raw security events are returned | Unbounded history rendering or queries consume resources | Administrator privileges bypass debit ownership |
+| Payment creation and ledger | Caller spends as another account owner | Decimal errors, replayed requests, or concurrent writes create inconsistent funds | Payment intent cannot be tied to its receipt and creator | References or recipient data leak beyond authorized views | Excess requests fill retained financial records | Client declares a risky payment settled or skips a hold |
+| Risk policy and backtesting | Untrusted caller impersonates policy administrator | Threshold changes silently weaken review or reported results | Changed policy lacks an audit record | Security fixture details appear in customer views | Unbounded evaluation input consumes resources | Customer/operator obtains policy-write authority |
+| Held-payment review | Creator acts as an independent reviewer | Repeated or conflicting decisions credit or refund twice | Decision has no reviewer, note, or timeline | Review records escape security roles | Repeated actions obstruct legitimate review | Customer approves a hold or creator approves their own payment |
+| Persistence, audit, and backup | Wrong key or history presented as expected evidence | State, authentication tables, audit entries, or backup are edited | Host administrator rewrites evidence | Plain database, key, and backups are copied | Corruption, disk exhaustion, or key loss prevents startup/recovery | Filesystem access is mistaken for protected key custody |
 
-## Controls and acceptance evidence
+## Payment invariants and adversarial checks
 
-The [risk and control register](control-register.csv) assigns each risk a likelihood, impact, owner, treatment, control status, evidence requirement, and document reference. Scores are illustrative prioritization values from 1–5 multiplied together. They are not measured bank risk estimates.
+The ledger and state machine are the highest-priority correctness boundary:
 
-| Control | Implemented demo behavior or explicit requirement | Acceptance evidence |
+1. Parse CHF input into integer cents. Reject negative, zero, excessive, non-finite, or unsupported-precision amounts rather than rounding an ambiguous payment.
+2. Validate ownership, account state, beneficiary, reference bounds, and available funds before accepting an intent. Customer-facing banking operations use the authenticated identity, not an owner supplied by the browser.
+3. Accept a payment and its ledger/audit effects atomically. Competing requests must not both spend funds that only one request can cover.
+4. Reserve the sender's amount immediately for a held payment. Approval credits the recipient once; rejection refunds the sender once. The sum of account balances plus pending held amounts remains constant for transfers.
+5. Bind an idempotency key to its authenticated creator and payment intent. An identical retry returns the original receipt; reusing the key with a different intent is rejected.
+6. Require a supported pending state, an authorized distinct reviewer, and a decision note. Reject self-approval, repeated decisions, and attempts to edit a completed receipt.
+
+An independent reviewer means a different authenticated local user. It does not prove real-world organizational independence: a trusted administrator can provision users, and the host owner controls the entire local environment.
+
+## Control and evidence matrix
+
+| Control boundary | Expected behavior | Acceptance evidence |
 | --- | --- | --- |
-| C-01: Local exposure boundary | Loopback by default; exact Host validation; optional container entry published only to loopback | Startup configuration plus accepted/rejected Host and local HTTP checks |
-| C-02: Write-request protection | Exact Origin and CSRF checks on mutation routes; allowlisted JSON fields | Allowed write succeeds; missing/incorrect token and unrelated Origin are rejected |
-| C-03: Bounded input and operation rules | Request limits, allowlisted scenarios/actions, ordered response transitions | Oversized/invalid input fails without changing state; triage, contain, resolve succeed only in order |
-| C-04: Browser isolation | Restrictive CSP/security headers, local static assets, text-safe rendering | HTTP header checks, JavaScript syntax checks, and functional UI review |
-| C-05: Atomic local evidence | SQLite state and audit updates; HMAC-SHA256 chained entries with generated local key | Persistence/restart checks; valid chain passes; changed entry or wrong key fails verification |
-| C-06: Explainable synthetic analysis | Actual rule evaluation and reason-bearing fraud results | Positive and negative event fixtures, boundary values, and expected reason-code/score tests |
-| C-07: Delivery hygiene | Source checks, no committed runtime key/database, Windows/Linux CI configuration | `python3 tools/check.py`, `python3 -m unittest discover -s tests -v`, and reviewed CI run results |
-| C-08: Production identity and cryptography | **Planned requirement:** authenticated multi-user access, real MFA/RBAC, TLS/mTLS, protected key custody, encrypted storage | Not implemented or attested by this demonstration; requires a separately scoped production design and verification |
-| C-09: Operational resilience | **Planned requirement:** independently protected backups, recovery targets, monitored capacity and failover | The local demo has no HA or guaranteed RTO/RPO; follow the [operations guide](operations.md) for limited local recovery |
-| C-10: Honest presentation and residency | Synthetic labels and documented limits; no regulatory certification or hosting-location claim | Review README, UI, exports, and this model; verify real deployment provenance before any residency claim |
+| Identity | Password verification uses salted scrypt; sessions expire and logout invalidates them; TOTP is enforced after confirmed enrollment | Correct/incorrect password, token expiry/logout, enrollment, invalid OTP, and published TOTP-vector checks |
+| Browser request integrity | Exact Host/Origin checks and a session-bound CSRF token protect writes; private assets are served through explicit routes | Valid operation succeeds; foreign/missing origin, missing/wrong token, unexpected fields, oversized body, and path traversal fail |
+| Role and ownership separation | Customer views are filtered; operations require the appropriate role and resource ownership | Cross-customer reads/debits and customer access to users, policy writes, review decisions, and evidence export are rejected |
+| Financial consistency | Amounts, holds, postings, and receipts obey the payment invariants | Settlement, rejection/refund, insufficient funds, concurrent requests, duplicate submission, and conservation checks |
+| Decision integrity | Only a distinct authorized reviewer can conclude a pending payment | Own-approval, unauthorized review, repeated/conflicting decision, and missing-note checks; accepted decision records its actor |
+| Explainable risk | Held payments expose reasons; policy evaluation produces deterministic labeled-case results | Threshold and velocity boundaries, benign/risky fixtures, expected confusion matrix, and non-mutating backtest checks |
+| Audit and persistence | Domain-state mutation and keyed audit append commit together; invalid retained state blocks normal mutation | Restart persistence, changed state/entry, wrong key, malformed state, missing-state, and failed-operation rollback checks |
+| Recovery | A verified isolated copy retains banking state, authentication data, and the matching audit key | Restore comparison and successful post-restore operation; protect the backup as sensitive local material |
 
-Run the checks against the exact revision being reviewed. A listed acceptance check is a requirement, not proof it passed in an unspecified environment. CI configuration also needs a completed remote run before CI success can be claimed.
+These are review and test requirements. Consult the actual test output and the exact revision under review before saying a requirement passed. A CI file is not a completed CI run, and a matching synthetic fixture is not proof of production fraud effectiveness.
 
-## Conceptual attack tree
+## Audit assurance and residual risk
 
-This is a defensive review tree, not an exploitation procedure.
+The HMAC-SHA256 chain binds saved **banking domain state** to retained audit entries. Authentication users, password hashes, TOTP enrollment, and session tables are separate local records; they are not covered by that domain-state digest. Backups include those tables so the restored application retains its users, but that does not add independent integrity protection to them.
 
-```mermaid
-flowchart TD
-    Goal[Misleading or unauthorized local incident state]
-    Goal --> Alternative[OR: alternative failure paths]
-    Alternative --> Browser[Unrelated browser origin can submit a write]
-    Alternative --> Input[Invalid operation bypasses validation]
-    Alternative --> Disk[Host user edits persistence and key]
-    Alternative --> Meaning[Simulated action mistaken for real containment]
-    Browser --> Origin[Defend: exact Origin and CSRF checks]
-    Input --> Rules[Defend: allowlists and state-transition tests]
-    Disk --> Limit[Limit: protect host access; chain is not immutable]
-    Meaning --> Labels[Defend: synthetic labels and clear runbooks]
-```
+The verification key and database share a host trust domain. An administrator with the key can construct another valid history, and restoration of an older matching database/key snapshot cannot be distinguished from an intended rollback without an independent checkpoint. The chain is not immutable storage, nonrepudiation, or hardware-backed key custody.
 
-## Residual risks and release limits
+Optional TOTP protects an enrolled login against password-only access; it does not make an HTTP connection encrypted, protect a compromised host, or establish step-up authorization for every payment. This local app provides no production identity provider, device binding, HSM, external monitoring, or real payment connectivity.
 
-- **No multi-user identity boundary:** this is a trusted-user loopback application, not an authenticated bank operator portal. A CSRF token is not a login credential or a substitute for authorization.
-- **No production encryption claim:** local HTTP is not TLS; SQLite is not encrypted; a software HMAC key is not an HSM. Protect the host and use synthetic data only.
-- **No immutable audit claim:** a database and key controlled by the same administrator cannot establish independent nonrepudiation. A valid retained chain does not independently prove there was never a truncated or replaced history.
-- **No automated real-world containment:** response buttons update synthetic state. They do not lock real accounts, revoke identity-provider tokens, block network traffic, or prevent actual fraud.
-- **No comprehensive detection claim:** deterministic fixtures demonstrate rule behavior under selected cases. Unknown techniques, adaptive attackers, production baselines, clock skew, and broad false-positive rates are outside that evidence.
-- **No regulated-bank readiness claim:** external IAM, WAF/SIEM integrations, verified encryption, independent recovery, signed releases, current legal applicability review, and Swiss residency remain separate requirements.
-
-Revisit this threat model before adding any external connection, public listener, multi-user capability, real data, banking integration, or production assurance claim. See [architecture](architecture.md), [operations](operations.md), and [incident playbooks](incident-playbooks.md).
+Revisit the model before adding public exposure, real customer data, an external payment rail, multi-host services, or a regulated deployment claim. See [architecture](architecture.md), [operations and recovery](operations.md), and the [project overview](../README.md).

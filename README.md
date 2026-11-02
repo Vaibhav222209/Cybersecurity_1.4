@@ -1,84 +1,82 @@
-# Portbug Bank · Cyber Defense Center
+# Portbug Bank · Secure Digital Banking
 
-**Made by Vaibhav Thakur.** A practical cybersecurity engineering project for a **fictional private bank in Zurich, Switzerland**.
+**Made by Vaibhav Thakur.** A private-banking application for a fictional Zurich bank, with security controls built into the payment workflow.
 
-A runnable security operations console with synthetic detection scenarios, explainable payment-risk signals, controlled incident workflows, and verifiable audit evidence. The interface is backed by local Python logic and persistent state; scenario buttons exercise the detection engine rather than merely changing a dashboard counter.
+Explore synthetic CHF accounts, send local demonstration payments, review transaction history, and investigate the security decisions behind each payment. Risky instructions reserve funds for independent review; a second operator must approve or reject them. The banking application and security workspace share one auditable ledger rather than disconnected dashboard counters.
 
-![Portbug Bank Cyber Defense Center with synthetic detections, activity charts and control evidence](docs/defense-center.png)
+![Portbug Bank digital banking interface with synthetic CHF accounts](docs/banking-overview.png)
 
-## Run it
+Also see the [security workbench preview](docs/security-workbench.png) and [validation record](docs/validation.md).
 
-Install **Python 3.12 or later**. No Make, npm installation, Python packages, cloud account, or credentials are required to run the application.
+## Start the bank
+
+Install **Python 3.12 or later**. The application uses the standard library and local browser assets; no Make, npm installation, Python packages, cloud account, or default credentials are needed.
 
 ```bat
-:: Windows Command Prompt — from the project folder
+:: Windows Command Prompt
+git clone https://github.com/Vaibhav222209/Cybersecurity_1.4.git
+cd Cybersecurity_1.4
 py -m portbug
 ```
 
 ```sh
-# Linux / macOS — from the project folder
+# Linux / macOS, from the project folder
 python3 -m portbug
 ```
 
-Open **http://127.0.0.1:8080** in your browser. Keep the terminal open; press **Ctrl+C** to stop. If that port is occupied, add `--port 8081` and open the corresponding address. On Windows, `py --list` shows installed Python versions; select an installed supported version explicitly with `py -3.12 -m portbug` or `py -3.14 -m portbug` if necessary.
+Open **http://127.0.0.1:8080**. On first launch, create your local administrator account with a new password of at least 12 characters. Use a password created for this demonstration, not a real banking password. Keep the terminal running; **Ctrl+C** stops the application.
 
-To download the project first:
+Already cloned the repository? Run `git pull --ff-only origin main` from that folder before starting. The banking rebuild uses a new `.local-banking/` data directory; it does not reuse the previous dashboard's database.
 
-```sh
-git clone https://github.com/Vaibhav222209/Cybersecurity_1.4.git
-cd Cybersecurity_1.4
-```
+If another application uses port 8080, run `py -m portbug --port 8081` on Windows or `python3 -m portbug --port 8081` elsewhere. `py --list` shows your installed Windows Python versions. Optional container startup is `docker compose up --build`.
 
-Optional Docker startup: `docker compose up --build`. The Compose port is published on host loopback. See [operations](docs/operations.md) for persistence, shutdown, backup, and recovery.
+## Banking, with decisions you can inspect
 
-## Explore the defense center
-
-1. Review the overview, asset zones, and synthetic alert queue.
-2. Select a scenario such as **credential abuse**, **payment change**, or **data export**, then run it. All events are generated locally; no attack or network scan is performed.
-3. Inspect the resulting detection, its reason, severity, and ATT&CK technique reference.
-4. Move an alert through **triage → contain → resolve**. These actions update the local exercise only; they do not control a real identity provider or payment system.
-5. Review fraud reason codes and distinguish **implemented**, **simulated**, and **planned** controls.
-6. Inspect the audit chain and download the evidence report. Repeat a benign baseline scenario to compare positive and negative detection behavior.
-
-## What works
-
-| Capability | Implementation |
+| Workspace | What you can do |
 | --- | --- |
-| Defensive detection | Local event rules for suspicious authentication, geography, privilege changes, exports, and payment-instruction changes; synthetic fixtures and tests |
-| Fraud review | Deterministic risk scoring with human-readable reasons; advisory outputs only |
-| Incident operations | Ordered state transitions with rejected invalid actions and linked exercise records |
-| Evidence trail | Atomic SQLite state updates and an HMAC-SHA256 audit chain using a locally generated, uncommitted key |
-| Local HTTP safeguards | Loopback default, request validation and limits, same-origin write checks, CSRF protection, and restrictive browser security headers |
-| Operator interface | Responsive dashboard, scenario controls, alert details, fraud review, control evidence, audit inspection, and runbooks |
-| Reproducible development | Standard-library Python runtime/tests; plain local HTML, CSS, and JavaScript; Windows and Linux CI workflow |
+| Banking home | Inspect your own synthetic current/savings accounts and available balances |
+| Payments | Choose a beneficiary, review an instruction, submit it with an idempotency key, and see settlement or a review hold |
+| Activity | Follow the actual local ledger and payment status rather than illustrative traffic counters |
+| Personal security | Enroll optional authenticator-based TOTP verification and manage your signed-in session |
+| Security operations | Review held payments, investigate their reasons and event timelines, and record an independent approval/rejection |
+| Detection workbench | Change permitted risk thresholds and backtest candidate settings against labeled cases with a confusion matrix |
+| Administration | Create separate customer and operator accounts with their own credentials and role boundaries |
 
-The project models advanced preparation without claiming a production deployment. MFA/SSO, WAF, service mTLS, managed SIEM, hardware key custody, encrypted storage, and production network enforcement are **not integrated here**. The console labels modeled controls separately. Local HTTP is not TLS, SQLite is not encrypted, and an administrator holding the audit key can rewrite the chain. Swiss residency is an architectural assumption, not an attestation about your computer or this development environment.
+All accounts, beneficiaries, funds, and events are synthetic. No payment leaves this application or reaches a bank, clearing system, card network, or SWIFT.
 
-Initial findings and chart history are seeded illustrative data, not measured bank telemetry. Fraud scoring uses explainable rules, not a trained ML model. New scenario actions produce actual local state changes and audit entries.
+## Try the complete payment-control workflow
 
-## Architecture
+1. Create your first administrator account. Its banking home has synthetic starter accounts and funds.
+2. Make a modest payment to a trusted demonstration beneficiary. Inspect its receipt and resulting balance changes.
+3. Submit a payment at or above the default **CHF 10,000** review threshold. The sender's funds are reserved and the instruction enters the review queue.
+4. Create a separate **operator** through administration, using another local username and password.
+5. Sign in as that operator in a separate browser profile or after logging out. Review the held payment, its fraud reasons, and its case timeline; add a decision note and approve or reject it.
+6. Return to the sender's account. Approval credits the synthetic recipient; rejection returns the reserved funds. The sender cannot approve their own instruction.
+7. Compare candidate thresholds in the workbench, then inspect or export the resulting evidence.
 
-```mermaid
-flowchart LR
-    Analyst[Local analyst browser] -->|Same-origin HTTP on loopback| Server[Python defense-center server]
-    Server --> Rules[Synthetic event detection]
-    Server --> Fraud[Explainable fraud scoring]
-    Server --> Response[Controlled exercise transitions]
-    Rules --> Store[(Local SQLite state)]
-    Fraud --> Store
-    Response --> Store
-    Store --> Audit[HMAC-chained audit evidence]
-    Server --> Report[Downloadable evidence report]
-```
+The production meaning of a control is kept separate from what the local demonstration proves. A real bank would additionally need independent custody, production IAM, protected network boundaries, regulated operations, and external payment integrations.
 
-The displayed bank zones are a **modeled topology**, not separately deployed banking networks. See [architecture and boundaries](docs/architecture.md), the [STRIDE threat model](docs/threat-model.md), and the [risk/control register](docs/control-register.csv).
+## Controls that govern the application
 
-## Verify the project
+| Control | Implemented behavior |
+| --- | --- |
+| Authentication | Operator-chosen passwords stored with scrypt; opaque server-side sessions; optional TOTP enrollment and verification |
+| Role and ownership checks | Customers see their own banking records; operator/admin actions have separate role checks; account ownership is enforced on the server |
+| Payment integrity | Integer CHF cents, balance checks, atomic state changes, idempotent submission, and conserved funds across settled and held instructions |
+| Independent review | High-risk instructions cannot be approved by their author; decisions require a note and follow the permitted state transition |
+| Fraud explanations | Rule decisions expose their contributing reasons; adjustable thresholds are evaluated against labeled backtest cases |
+| Browser boundary | Exact Host/Origin checks, CSRF protection, request limits, local static assets, and restrictive security headers |
+| Evidence | SQLite persistence plus a keyed, state-bound HMAC audit chain; modified evidence blocks further banking mutations |
+| Recovery | Verified database/key backup and isolated restoration procedures |
+
+The audit chain protects against unkeyed changes while its local key remains trusted. It is not immutable storage: a host administrator controlling the key and database can rewrite history. Authentication tables share that host trust domain and are not included in the banking-state digest. The application uses loopback HTTP and unencrypted local SQLite; production TLS, encrypted storage, independent logs, and hardware key custody are separate requirements.
+
+## Verify it
 
 ```bat
 :: Windows
-py -3.12 -m unittest discover -s tests -v
-py -3.12 tools\check.py
+py -m unittest discover -s tests -v
+py tools\check.py
 ```
 
 ```sh
@@ -87,18 +85,16 @@ python3 -m unittest discover -s tests -v
 python3 tools/check.py
 ```
 
-With Node installed, `node --check portbug/static/app.js` also checks JavaScript syntax. Node is a development check, not a runtime dependency. The [CI workflow](.github/workflows/ci.yml) runs checks on Windows and Linux; a workflow file alone is not proof of a completed passing CI run.
+Developers with Node installed can also run `node --check portbug/static/app.js`. Node is not needed to use the banking application. The [CI workflow](.github/workflows/ci.yml) configures Windows/Linux checks on Python 3.12 and 3.14; inspect completed runs before claiming a platform combination passes.
 
-See the [validation record](docs/validation.md) for the checks performed during this rebuild and their limits.
+## Engineering documentation
 
-## Security preparation and scope
+- [Architecture and trust boundaries](docs/architecture.md)
+- [Threat model and verification requirements](docs/threat-model.md)
+- [Operations, account separation, backup and recovery](docs/operations.md)
+- [Security reporting and deployment limits](SECURITY.md)
+- [Contributor workflow](CONTRIBUTING.md)
 
-- [Incident playbooks](docs/incident-playbooks.md): credential abuse, suspicious payments, data export, privileged changes, and recovery.
-- [Operations](docs/operations.md): local startup, evidence, backups, and restoration.
-- [Control register](docs/control-register.csv): risk owners, treatments, current status, and evidence requirements.
-- [Security policy](SECURITY.md): safe reporting and defensive testing boundaries.
-- [Contributing](CONTRIBUTING.md): commands, synthetic-data conventions, and review requirements.
+Portbug Bank is fictional. Zurich is the modeled headquarters; this repository does not attest Swiss data residency, banking authorization, or regulatory compliance.
 
-All customer-like identities, account identifiers, event histories, and transaction records are synthetic. The application does not connect to real banks, SWIFT, payment networks, threat-intelligence services, or external telemetry. Framework references are educational; no banking authorization, compliance certification, or legal assurance is claimed.
-
-Licensed under the [MIT License](LICENSE). **Portbug Bank Cyber Defense Center — made by Vaibhav Thakur.**
+**Portbug Bank — made by Vaibhav Thakur.** Licensed under the [MIT License](LICENSE).

@@ -1,3 +1,3 @@
-"""Portbug Bank Cyber Defense Center, made by Vaibhav Thakur."""
+"""Portbug Bank secure digital banking, made by Vaibhav Thakur."""
 
-__version__ = "1.0.0"
+__version__ = "3.0.0"
