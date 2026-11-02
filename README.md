@@ -18,6 +18,15 @@ make lint
 make test
 ```
 
+On Windows Command Prompt, Make is optional. From the project folder, run:
+
+```bat
+py -3.12 tools\check_repository.py
+py -3.12 -m unittest discover -s tests -v
+```
+
+Use `py --list` to check installed Python versions. If 3.12 is missing, install Python 3.12 and reopen the terminal. The project targets 3.12; a different `python3` version is not a substitute. Git attributes keep text files in LF format on all platforms, and test fixtures explicitly use LF rather than the operating system's default line endings.
+
 The project name is `portburg-secure-bank`; the existing GitHub repository name remains `Cybersecurity_1.4`. These commands work against the Phase 1 commit after it has been pushed. The onboarding checkout currently uses the local `work` branch.
 
 `make lint` checks document links, text hygiene, Python syntax, structured JSON, and accidental private-key material. `make test` exercises the checker against valid and deliberately broken fixtures and verifies the actual scaffold. These are documentation checks, not application security tests or a complete secrets scanner.

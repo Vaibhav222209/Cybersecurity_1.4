@@ -18,7 +18,7 @@ class RepositoryChecks(unittest.TestCase):
     def write(self, name, text):
         path = self.root / name
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        path.write_text(text, encoding="utf-8", newline="\n")
 
     def assert_error(self, text):
         self.assertTrue(any(text in error for error in check_repository(self.root)))
@@ -50,6 +50,10 @@ class RepositoryChecks(unittest.TestCase):
         self.write("README.md", "bad  \nno newline")
         self.assert_error("trailing whitespace")
         self.assert_error("missing final newline")
+
+    def test_crlf_line_endings_rejected(self):
+        (self.root / "README.md").write_bytes(b"# Windows line endings\r\n")
+        self.assert_error("use LF line endings")
 
     def test_unbalanced_fence(self):
         self.write("README.md", "```mermaid\nflowchart LR\n")
