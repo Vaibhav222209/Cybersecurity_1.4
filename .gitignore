@@ -1,0 +1,26 @@
+# Local runtime configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+.local/
+
+# Generated state and Python tooling
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+artifacts/
+backups/
+*.log
+.DS_Store
